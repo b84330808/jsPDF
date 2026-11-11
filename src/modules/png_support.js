@@ -269,7 +269,7 @@ function filterNone(line) {
 
 function filterSub(line, colorsPerPixel) {
   const len = line.length;
-  const result = [];
+  const result = new Uint8Array(len + 1);
 
   result[0] = 1;
 
@@ -283,7 +283,7 @@ function filterSub(line, colorsPerPixel) {
 
 function filterUp(line, colorsPerPixel, prevLine) {
   const len = line.length;
-  const result = [];
+  const result = new Uint8Array(len + 1);
 
   result[0] = 2;
 
@@ -297,7 +297,7 @@ function filterUp(line, colorsPerPixel, prevLine) {
 
 function filterAverage(line, colorsPerPixel, prevLine) {
   const len = line.length;
-  const result = [];
+  const result = new Uint8Array(len + 1);
 
   result[0] = 3;
 
@@ -312,7 +312,7 @@ function filterAverage(line, colorsPerPixel, prevLine) {
 
 function filterPaeth(line, colorsPerPixel, prevLine) {
   const len = line.length;
-  const result = [];
+  const result = new Uint8Array(len + 1);
 
   result[0] = 4;
 
