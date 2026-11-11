@@ -456,4 +456,39 @@ describe("Module: PNGSupport", () => {
     it("4channels-indexed-8bit_MEDIUM", () =>
       runTest("4channels-indexed-8bit.png", "MEDIUM"));
   });
+
+  describe("16 bit samples with alpha channel", () => {
+    function imageStreams(pdf) {
+      const streams = [];
+      const regex = /\/Subtype \/Image[\s\S]*?stream\n([\s\S]*?)\nendstream/g;
+      let match;
+      while ((match = regex.exec(pdf)) !== null) {
+        streams.push(match[1]);
+      }
+      return streams;
+    }
+
+    it("keeps the byte order of RGBA samples", () => {
+      // 1x1 pixel, R=0x1234 G=0x5678 B=0x9abc A=0x8001
+      const png =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABEAYAAABPhRjKAAAAEUlEQVR4XmMQMgmrmLWngREAC/4C7GPXq9YAAAAASUVORK5CYII=";
+      const doc = new jsPDF();
+      doc.addImage(png, "PNG", 0, 0, 10, 10, undefined, "NONE");
+
+      expect(imageStreams(doc.output())).toEqual([
+        "\x12\x34\x56\x78\x9a\xbc",
+        "\x80\x01"
+      ]);
+    });
+
+    it("keeps the byte order of grayscale alpha samples", () => {
+      // 1x1 pixel, gray=0x1234 A=0x8001
+      const png =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABEAQAAADljNBBAAAADUlEQVR4XmMQMmlgBAAB6gDIz+A8dgAAAABJRU5ErkJggg==";
+      const doc = new jsPDF();
+      doc.addImage(png, "PNG", 0, 0, 10, 10, undefined, "NONE");
+
+      expect(imageStreams(doc.output())).toEqual(["\x12\x34", "\x80\x01"]);
+    });
+  });
 });

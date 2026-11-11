@@ -448,7 +448,15 @@ function processAlphaPNG(decodedPng) {
   const colorBytes = new Uint8Array(colorByteLen);
   const alphaBytes = new Uint8Array(alphaByteLen);
 
-  const dataView = new DataView(data.buffer);
+  // fast-png returns 16 bit samples as a Uint16Array in platform byte order,
+  // but readSample reads big-endian, so convert to PNG/PDF byte order first.
+  const bytes =
+    data instanceof Uint16Array ? convertUint16ArrayToUint8Array(data) : data;
+  const dataView = new DataView(
+    bytes.buffer,
+    bytes.byteOffset,
+    bytes.byteLength
+  );
   const colorView = new DataView(colorBytes.buffer);
   const alphaView = new DataView(alphaBytes.buffer);
 
