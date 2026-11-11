@@ -436,44 +436,56 @@ function processAlphaPNG(decodedPng) {
 
   const colorSpace = channels === 2 ? "DeviceGray" : "DeviceRGB";
   const colorsPerPixel = channels - 1;
-
   const totalPixels = width * height;
-  const colorChannels = colorsPerPixel; // 1 for Gray, 3 for RGB
-  const alphaChannels = 1;
-  const totalColorSamples = totalPixels * colorChannels;
-  const totalAlphaSamples = totalPixels * alphaChannels;
 
-  const colorByteLen = Math.ceil((totalColorSamples * depth) / 8);
-  const alphaByteLen = Math.ceil((totalAlphaSamples * depth) / 8);
-  const colorBytes = new Uint8Array(colorByteLen);
-  const alphaBytes = new Uint8Array(alphaByteLen);
-
-  // fast-png returns 16 bit samples as a Uint16Array in platform byte order,
-  // but readSample reads big-endian, so convert to PNG/PDF byte order first.
-  const bytes =
-    data instanceof Uint16Array ? convertUint16ArrayToUint8Array(data) : data;
-  const dataView = new DataView(
-    bytes.buffer,
-    bytes.byteOffset,
-    bytes.byteLength
+  // Gray+alpha and RGBA PNGs only allow 8 or 16 bits per sample, so every
+  // sample is whole bytes and can be copied directly. fast-png returns 16 bit
+  // samples as a Uint16Array of values; PDF expects them big-endian.
+  const bytesPerSample = depth / 8;
+  const colorBytes = new Uint8Array(
+    totalPixels * colorsPerPixel * bytesPerSample
   );
-  const colorView = new DataView(colorBytes.buffer);
-  const alphaView = new DataView(alphaBytes.buffer);
+  const alphaBytes = new Uint8Array(totalPixels * bytesPerSample);
 
   let needSMask = false;
-  for (let p = 0; p < totalPixels; p++) {
-    const pixelStartIndex = p * channels;
-    for (let s = 0; s < colorChannels; s++) {
-      const sampleIndex = pixelStartIndex + s;
-      const colorValue = readSample(dataView, sampleIndex, depth);
-      writeSample(colorView, colorValue, p * colorChannels + s, depth);
+  if (depth === 16) {
+    let colorIndex = 0;
+    let alphaIndex = 0;
+    let sampleIndex = 0;
+    for (let p = 0; p < totalPixels; p++) {
+      for (let s = 0; s < colorsPerPixel; s++) {
+        const value = data[sampleIndex++];
+        colorBytes[colorIndex++] = value >>> 8;
+        colorBytes[colorIndex++] = value & 0xff;
+      }
+      const alpha = data[sampleIndex++];
+      if (alpha !== 0xffff) {
+        needSMask = true;
+      }
+      alphaBytes[alphaIndex++] = alpha >>> 8;
+      alphaBytes[alphaIndex++] = alpha & 0xff;
     }
-    const sampleIndex = pixelStartIndex + colorChannels;
-    const alphaValue = readSample(dataView, sampleIndex, depth);
-    if (alphaValue < (1 << depth) - 1) {
-      needSMask = true;
+  } else if (colorsPerPixel === 3) {
+    // 8 bit RGBA, e.g. every PNG made by canvas.toDataURL()
+    for (let p = 0, i = 0, c = 0; p < totalPixels; p++, i += 4, c += 3) {
+      colorBytes[c] = data[i];
+      colorBytes[c + 1] = data[i + 1];
+      colorBytes[c + 2] = data[i + 2];
+      const alpha = data[i + 3];
+      if (alpha !== 0xff) {
+        needSMask = true;
+      }
+      alphaBytes[p] = alpha;
     }
-    writeSample(alphaView, alphaValue, p * alphaChannels, depth);
+  } else {
+    for (let p = 0, i = 0; p < totalPixels; p++, i += 2) {
+      colorBytes[p] = data[i];
+      const alpha = data[i + 1];
+      if (alpha !== 0xff) {
+        needSMask = true;
+      }
+      alphaBytes[p] = alpha;
+    }
   }
 
   return {
@@ -524,30 +536,10 @@ function readSample(view, sampleIndex, depth) {
   return (word >> bitOffset) & bitMask;
 }
 
-function writeSample(view, value, sampleIndex, depth) {
-  const bitIndex = sampleIndex * depth;
-  const byteIndex = Math.floor(bitIndex / 8);
-  const bitOffset = 16 - (bitIndex - byteIndex * 8 + depth);
-  const bitMask = (1 << depth) - 1;
-  const writeValue = (value & bitMask) << bitOffset;
-  const word =
-    safeGetUint16(view, byteIndex) & ~(bitMask << bitOffset) & 0xffff;
-  safeSetUint16(view, byteIndex, word | writeValue);
-}
-
 function safeGetUint16(view, byteIndex) {
   if (byteIndex + 1 < view.byteLength) {
     return view.getUint16(byteIndex, false);
   }
   const b0 = view.getUint8(byteIndex);
   return b0 << 8;
-}
-
-function safeSetUint16(view, byteIndex, value) {
-  if (byteIndex + 1 < view.byteLength) {
-    view.setUint16(byteIndex, value, false);
-    return;
-  }
-  const byteToWrite = (value >> 8) & 0xff;
-  view.setUint8(byteIndex, byteToWrite);
 }
